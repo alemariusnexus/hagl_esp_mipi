@@ -59,7 +59,7 @@ static SemaphoreHandle_t mutex;
 #endif /* CONFIG_HAGL_HAL_LOCK_WHEN_FLUSHING */
 // static uint8_t *buffer;
 
-static hagl_bitmap_t bb;
+hagl_bitmap_t bb;
 
 static spi_device_handle_t spi;
 static const char *TAG = "hagl_esp_mipi";

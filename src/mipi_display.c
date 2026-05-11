@@ -298,7 +298,7 @@ mipi_display_init(spi_device_handle_t *spi)
 
     ESP_LOGI(TAG, "Display initialized.");
 
-    spi_device_acquire_bus(*spi, portMAX_DELAY);
+    //spi_device_acquire_bus(*spi, portMAX_DELAY);
 }
 
 void
@@ -339,5 +339,5 @@ mipi_display_ioctl(spi_device_handle_t spi, const uint8_t command, uint8_t *data
 void
 mipi_display_close(spi_device_handle_t spi)
 {
-    spi_device_release_bus(spi);
+    //spi_device_release_bus(spi);
 }

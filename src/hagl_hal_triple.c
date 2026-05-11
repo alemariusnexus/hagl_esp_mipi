@@ -46,6 +46,8 @@ valid.
 
 #ifdef CONFIG_HAGL_HAL_USE_TRIPLE_BUFFERING
 
+#error Only double buffered implementation is supported!
+
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <esp_log.h>
