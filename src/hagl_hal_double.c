@@ -64,19 +64,23 @@ hagl_bitmap_t bb;
 static spi_device_handle_t spi;
 static const char *TAG = "hagl_esp_mipi";
 
+static hagl_hal_custom_config_t customCfg;
+
 static size_t
 flush(void *self)
 {
+    hagl_backend_t* backend = (hagl_backend_t*) self;
+    const hagl_hal_custom_config_t* cfg = hagl_hal_get_custom_config(backend);
 #ifdef CONFIG_HAGL_HAL_LOCK_WHEN_FLUSHING
     size_t size = 0;
     /* Flush the whole back buffer with locking. */
     xSemaphoreTake(mutex, portMAX_DELAY);
-    size = mipi_display_write(spi, 0, 0, bb.width, bb.height, (uint8_t *) bb.buffer);
+    size = mipi_display_write(spi, cfg, 0, 0, bb.width, bb.height, (uint8_t *) bb.buffer);
     xSemaphoreGive(mutex);
     return size;
 #else
     /* Flush the whole back buffer. */
-    return mipi_display_write(spi, 0, 0, bb.width, bb.height, (uint8_t *) bb.buffer);
+    return mipi_display_write(spi, cfg, 0, 0, bb.width, bb.height, (uint8_t *) bb.buffer);
 #endif /* CONFIG_HAGL_HAL_LOCK_WHEN_FLUSHING */
 }
 
@@ -163,9 +167,24 @@ vline(void *self, int16_t x0, int16_t y0, uint16_t height, hagl_color_t color)
 // }
 
 void
+hagl_hal_custom_config(const hagl_hal_custom_config_t* cfg)
+{
+    customCfg = *cfg;
+}
+
+void
 hagl_hal_init(hagl_backend_t *backend)
 {
-    mipi_display_init(&spi);
+    hagl_hal_custom_config_t* cfg = (hagl_hal_custom_config_t*)
+            malloc(sizeof(hagl_hal_custom_config_t));
+    if (!cfg) {
+        ESP_LOGE(TAG, "Failed to allocate config buffer");
+        return;
+    }
+
+    *cfg = customCfg;
+
+    mipi_display_init(&spi, cfg);
 #ifdef CONFIG_HAGL_HAL_LOCK_WHEN_FLUSHING
     mutex = xSemaphoreCreateMutex();
 #endif /* CONFIG_HAGL_HAL_LOCK_WHEN_FLUSHING */
@@ -176,12 +195,17 @@ hagl_hal_init(hagl_backend_t *backend)
     );
 
     backend->buffer = (uint8_t *) heap_caps_malloc(
-            BITMAP_SIZE(DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_DEPTH),
+            BITMAP_SIZE(cfg->width, cfg->height, DISPLAY_DEPTH),
             MALLOC_CAP_DMA
         );
     if (NULL == backend->buffer) {
         ESP_LOGE(TAG, "NO BUFFER");
     };
+
+    // TODO: There is no user data pointer in hagl_backend_t, so we'll just abuse
+    //  the second buffer pointer, which is only used for triple-buffering. Find
+    //  a better way!
+    backend->buffer2 = (uint8_t*) cfg;
 
     ESP_LOGI(
         TAG, "Largest (MALLOC_CAP_DMA | MALLOC_CAP_32BIT) block after init: %d",
@@ -190,8 +214,8 @@ hagl_hal_init(hagl_backend_t *backend)
 
     heap_caps_print_heap_info(MALLOC_CAP_DMA | MALLOC_CAP_32BIT);
 
-    backend->width = MIPI_DISPLAY_WIDTH;
-    backend->height = MIPI_DISPLAY_HEIGHT;
+    backend->width = (int16_t) cfg->width;
+    backend->height = (int16_t) cfg->height;
     backend->depth = MIPI_DISPLAY_DEPTH;
     backend->put_pixel = put_pixel;
     backend->get_pixel = get_pixel;

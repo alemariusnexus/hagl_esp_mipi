@@ -64,7 +64,7 @@ min(int a, int b)
 }
 
 static void
-mipi_display_write_command(spi_device_handle_t spi, const uint8_t command)
+mipi_display_write_command(spi_device_handle_t spi, const hagl_hal_custom_config_t* cfg, const uint8_t command)
 {
     spi_transaction_t transaction = {
         .length = 8,
@@ -75,19 +75,19 @@ mipi_display_write_command(spi_device_handle_t spi, const uint8_t command)
     ESP_LOGD(TAG, "Sending command 0x%02x", command);
 
     /* Set DC low to denote a command. */
-    gpio_set_level(CONFIG_MIPI_DISPLAY_PIN_DC, 0);
+    gpio_set_level(cfg->pins.dc, 0);
     ESP_ERROR_CHECK(spi_device_polling_transmit(spi, &transaction));
 }
 
 static void
-mipi_display_write_data(spi_device_handle_t spi, const uint8_t *data, size_t length)
+mipi_display_write_data(spi_device_handle_t spi, const hagl_hal_custom_config_t* cfg, const uint8_t *data, size_t length)
 {
     if (0 == length) {
         return;
     };
 
     /* Set DC high to denote data. */
-    gpio_set_level(CONFIG_MIPI_DISPLAY_PIN_DC, 1);
+    gpio_set_level(cfg->pins.dc, 1);
 
     for (size_t i = 0; i < length; i += SPI_MAX_TRANSFER_SIZE) {
         size_t chunk = min(SPI_MAX_TRANSFER_SIZE, length - i);
@@ -105,7 +105,7 @@ mipi_display_write_data(spi_device_handle_t spi, const uint8_t *data, size_t len
 }
 
 static void
-mipi_display_read_data(spi_device_handle_t spi, uint8_t *data, size_t length)
+mipi_display_read_data(spi_device_handle_t spi, const hagl_hal_custom_config_t* cfg, uint8_t *data, size_t length)
 {
     if (0 == length) {
         return;
@@ -118,30 +118,30 @@ mipi_display_read_data(spi_device_handle_t spi, uint8_t *data, size_t length)
     };
 
     /* Set DC high to denote data. */
-    gpio_set_level(CONFIG_MIPI_DISPLAY_PIN_DC, 1);
+    gpio_set_level(cfg->pins.dc, 1);
 
     ESP_ERROR_CHECK(spi_device_polling_transmit(spi, &transaction));
 }
 
 static void
-mipi_display_set_address(spi_device_handle_t spi, uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
+mipi_display_set_address(spi_device_handle_t spi, const hagl_hal_custom_config_t* cfg, uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
 {
     uint8_t data[4];
     static uint16_t prev_x1, prev_x2, prev_y1, prev_y2;
 
-    x1 = x1 + CONFIG_MIPI_DISPLAY_OFFSET_X;
-    y1 = y1 + CONFIG_MIPI_DISPLAY_OFFSET_Y;
-    x2 = x2 + CONFIG_MIPI_DISPLAY_OFFSET_X;
-    y2 = y2 + CONFIG_MIPI_DISPLAY_OFFSET_Y;
+    x1 = x1 + cfg->offsetX;
+    y1 = y1 + cfg->offsetY;
+    x2 = x2 + cfg->offsetX;
+    y2 = y2 + cfg->offsetY;
 
     /* Change column address only if it has changed. */
     if ((prev_x1 != x1 || prev_x2 != x2)) {
-        mipi_display_write_command(spi, MIPI_DCS_SET_COLUMN_ADDRESS);
+        mipi_display_write_command(spi, cfg, MIPI_DCS_SET_COLUMN_ADDRESS);
         data[0] = x1 >> 8;
         data[1] = x1 & 0xff;
         data[2] = x2 >> 8;
         data[3] = x2 & 0xff;
-        mipi_display_write_data(spi, data, 4);
+        mipi_display_write_data(spi, cfg, data, 4);
 
         prev_x1 = x1;
         prev_x2 = x2;
@@ -149,22 +149,22 @@ mipi_display_set_address(spi_device_handle_t spi, uint16_t x1, uint16_t y1, uint
 
     /* Change page address only if it has changed. */
     if ((prev_y1 != y1 || prev_y2 != y2)) {
-        mipi_display_write_command(spi, MIPI_DCS_SET_PAGE_ADDRESS);
+        mipi_display_write_command(spi, cfg, MIPI_DCS_SET_PAGE_ADDRESS);
         data[0] = y1 >> 8;
         data[1] = y1 & 0xff;
         data[2] = y2 >> 8;
         data[3] = y2 & 0xff;
-        mipi_display_write_data(spi, data, 4);
+        mipi_display_write_data(spi, cfg, data, 4);
 
         prev_y1 = y1;
         prev_y2 = y2;
     }
 
-    mipi_display_write_command(spi, MIPI_DCS_WRITE_MEMORY_START);
+    mipi_display_write_command(spi, cfg, MIPI_DCS_WRITE_MEMORY_START);
 }
 
 size_t
-mipi_display_write(spi_device_handle_t spi, uint16_t x1, uint16_t y1, uint16_t w, uint16_t h, const uint8_t *buffer)
+mipi_display_write(spi_device_handle_t spi, const hagl_hal_custom_config_t* cfg, uint16_t x1, uint16_t y1, uint16_t w, uint16_t h, const uint8_t *buffer)
 {
     if (0 == w || 0 == h) {
         return 0;
@@ -176,8 +176,8 @@ mipi_display_write(spi_device_handle_t spi, uint16_t x1, uint16_t y1, uint16_t w
 
     xSemaphoreTake(mutex, portMAX_DELAY);
 
-    mipi_display_set_address(spi, x1, y1, x2, y2);
-    mipi_display_write_data(spi, buffer, size);
+    mipi_display_set_address(spi, cfg, x1, y1, x2, y2);
+    mipi_display_write_data(spi, cfg, buffer, size);
 
     xSemaphoreGive(mutex);
 
@@ -185,12 +185,12 @@ mipi_display_write(spi_device_handle_t spi, uint16_t x1, uint16_t y1, uint16_t w
 }
 
 static void
-mipi_display_spi_master_init(spi_device_handle_t *spi)
+mipi_display_spi_master_init(spi_device_handle_t *spi, const hagl_hal_custom_config_t* cfg)
 {
     spi_bus_config_t buscfg = {
-        .miso_io_num = CONFIG_MIPI_DISPLAY_PIN_MISO,
-        .mosi_io_num = CONFIG_MIPI_DISPLAY_PIN_MOSI,
-        .sclk_io_num = CONFIG_MIPI_DISPLAY_PIN_CLK,
+        .miso_io_num = cfg->pins.miso,
+        .mosi_io_num = cfg->pins.mosi,
+        .sclk_io_num = cfg->pins.sck,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
         /* Max transfer size in bytes. */
@@ -198,9 +198,9 @@ mipi_display_spi_master_init(spi_device_handle_t *spi)
         .flags = 0
     };
     spi_device_interface_config_t devcfg = {
-        .clock_speed_hz = CONFIG_MIPI_DISPLAY_SPI_CLOCK_SPEED_HZ,
+        .clock_speed_hz = cfg->clockFreqHz,
         .mode = CONFIG_MIPI_DISPLAY_SPI_MODE,
-        .spics_io_num = CONFIG_MIPI_DISPLAY_PIN_CS,
+        .spics_io_num = cfg->pins.cs,
         .queue_size = 8,
         .flags = SPI_DEVICE_NO_DUMMY
     };
@@ -213,96 +213,95 @@ mipi_display_spi_master_init(spi_device_handle_t *spi)
 }
 
 void
-mipi_display_init(spi_device_handle_t *spi)
+mipi_display_init(spi_device_handle_t *spi, const hagl_hal_custom_config_t* cfg)
 {
     mutex = xSemaphoreCreateMutex();
 
-#if CONFIG_MIPI_DISPLAY_PIN_CS > 0
-    /* Setup CS pin */
-    esp_rom_gpio_pad_select_gpio(CONFIG_MIPI_DISPLAY_PIN_CS);
-    gpio_set_direction(CONFIG_MIPI_DISPLAY_PIN_CS, GPIO_MODE_OUTPUT);
-    gpio_set_level(CONFIG_MIPI_DISPLAY_PIN_CS, 0);
-#endif /* CONFIG_MIPI_DISPLAY_PIN_CS > 0 */
+    if (cfg->pins.cs >= 0) {
+        /* Setup CS pin */
+        esp_rom_gpio_pad_select_gpio(cfg->pins.cs);
+        gpio_set_direction(cfg->pins.cs, GPIO_MODE_OUTPUT);
+        gpio_set_level(cfg->pins.cs, 0);
+    }
 
     /* Setup DC pin */
-    esp_rom_gpio_pad_select_gpio(CONFIG_MIPI_DISPLAY_PIN_DC);
-    gpio_set_direction(CONFIG_MIPI_DISPLAY_PIN_DC, GPIO_MODE_OUTPUT);
+    esp_rom_gpio_pad_select_gpio(cfg->pins.dc);
+    gpio_set_direction(cfg->pins.dc, GPIO_MODE_OUTPUT);
 
-    mipi_display_spi_master_init(spi);
+    mipi_display_spi_master_init(spi, cfg);
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
-#if CONFIG_MIPI_DISPLAY_PIN_RST > 0
-    /* Reset the display. */
-    esp_rom_gpio_pad_select_gpio(CONFIG_MIPI_DISPLAY_PIN_RST);
-    gpio_set_direction(CONFIG_MIPI_DISPLAY_PIN_RST, GPIO_MODE_OUTPUT);
-    gpio_set_level(CONFIG_MIPI_DISPLAY_PIN_RST, 0);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-    gpio_set_level(CONFIG_MIPI_DISPLAY_PIN_RST, 1);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-#endif /* CONFIG_MIPI_DISPLAY_PIN_RST > 0 */
+    if (cfg->pins.rst >= 0) {
+        /* Reset the display. */
+        esp_rom_gpio_pad_select_gpio(cfg->pins.rst);
+        gpio_set_direction(cfg->pins.rst, GPIO_MODE_OUTPUT);
+        gpio_set_level(cfg->pins.rst, 0);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+        gpio_set_level(cfg->pins.rst, 1);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+    }
 
     /* Send minimal init commands. */
-    mipi_display_write_command(*spi, MIPI_DCS_SOFT_RESET);
+    mipi_display_write_command(*spi, cfg, MIPI_DCS_SOFT_RESET);
     vTaskDelay(200 / portTICK_PERIOD_MS);
 
-    mipi_display_write_command(*spi, MIPI_DCS_SET_ADDRESS_MODE);
-    mipi_display_write_data(*spi, &(uint8_t) {MIPI_DISPLAY_ADDRESS_MODE}, 1);
+    mipi_display_write_command(*spi, cfg, MIPI_DCS_SET_ADDRESS_MODE);
+    mipi_display_write_data(*spi, cfg, &(uint8_t) {MIPI_DISPLAY_ADDRESS_MODE}, 1);
 
-    mipi_display_write_command(*spi, MIPI_DCS_SET_PIXEL_FORMAT);
-    mipi_display_write_data(*spi, &(uint8_t) {CONFIG_MIPI_DISPLAY_PIXEL_FORMAT}, 1);
+    mipi_display_write_command(*spi, cfg, MIPI_DCS_SET_PIXEL_FORMAT);
+    mipi_display_write_data(*spi, cfg, &(uint8_t) {CONFIG_MIPI_DISPLAY_PIXEL_FORMAT}, 1);
 
-#ifdef CONFIG_MIPI_DISPLAY_INVERT
-    mipi_display_write_command(*spi, MIPI_DCS_ENTER_INVERT_MODE);
-#else
-    mipi_display_write_command(*spi, MIPI_DCS_EXIT_INVERT_MODE);
-#endif /* CONFIG_MIPI_DISPLAY_INVERT */
+    if (cfg->invertColors) {
+        mipi_display_write_command(*spi, cfg, MIPI_DCS_ENTER_INVERT_MODE);
+    } else {
+        mipi_display_write_command(*spi, cfg, MIPI_DCS_EXIT_INVERT_MODE);
+    }
 
-    mipi_display_write_command(*spi, MIPI_DCS_EXIT_SLEEP_MODE);
+    mipi_display_write_command(*spi, cfg, MIPI_DCS_EXIT_SLEEP_MODE);
     vTaskDelay(200 / portTICK_PERIOD_MS);
 
-    mipi_display_write_command(*spi, MIPI_DCS_SET_DISPLAY_ON);
+    mipi_display_write_command(*spi, cfg, MIPI_DCS_SET_DISPLAY_ON);
     vTaskDelay(200 / portTICK_PERIOD_MS);
 
-#if CONFIG_MIPI_DISPLAY_PIN_BL > 0
-    /* Enable backlight. */
-    ESP_LOGI(TAG, "Enabling backlight pin %d", CONFIG_MIPI_DISPLAY_PIN_BL);
-    esp_rom_gpio_pad_select_gpio(CONFIG_MIPI_DISPLAY_PIN_BL);
-    gpio_set_direction(CONFIG_MIPI_DISPLAY_PIN_BL, GPIO_MODE_OUTPUT);
-    gpio_set_level(CONFIG_MIPI_DISPLAY_PIN_BL, CONFIG_MIPI_DISPLAY_PIN_BL_ACTIVE);
-#endif /* CONFIG_MIPI_DISPLAY_PIN_BL > 0 */
+    if (cfg->pins.bl >= 0) {
+        /* Enable backlight. */
+        ESP_LOGI(TAG, "Enabling backlight pin %d", cfg->pins.bl);
+        esp_rom_gpio_pad_select_gpio(cfg->pins.bl);
+        gpio_set_direction(cfg->pins.bl, GPIO_MODE_OUTPUT);
+        gpio_set_level(cfg->pins.bl, cfg->blActiveLevel);
+    }
 
-#if CONFIG_MIPI_DISPLAY_PWM_BL > 0
-    /* Enable backlight PWM. */
-    ESP_LOGI(TAG, "Setting backlight PWM to %d", CONFIG_MIPI_DISPLAY_PWM_BL);
-    ledc_timer_config_t timercfg = {
-        .duty_resolution = LEDC_TIMER_13_BIT,
-        .freq_hz = 9765,
-        .speed_mode = LEDC_LOW_SPEED_MODE,
-        .timer_num = LEDC_TIMER_0,
-        .clk_cfg = LEDC_AUTO_CLK,
-    };
+    if (cfg->blPwmDutyCycle >= 0) {
+        /* Enable backlight PWM. */
+        ESP_LOGI(TAG, "Setting backlight PWM to %d", cfg->blPwmDutyCycle);
+        ledc_timer_config_t timercfg = {
+            .duty_resolution = LEDC_TIMER_13_BIT,
+            .freq_hz = 9765,
+            .speed_mode = LEDC_LOW_SPEED_MODE,
+            .timer_num = LEDC_TIMER_0,
+            .clk_cfg = LEDC_AUTO_CLK,
+        };
 
-    ledc_timer_config(&timercfg);
+        ledc_timer_config(&timercfg);
 
-    ledc_channel_config_t channelcfg = {
-        .channel    = LEDC_CHANNEL_0,
-        .duty       = CONFIG_MIPI_DISPLAY_PWM_BL,
-        .gpio_num   = CONFIG_MIPI_DISPLAY_PIN_BL,
-        .speed_mode = LEDC_LOW_SPEED_MODE,
-        .hpoint     = 0,
-        .timer_sel  = LEDC_TIMER_0,
-    };
+        ledc_channel_config_t channelcfg = {
+            .channel    = LEDC_CHANNEL_0,
+            .duty       = cfg->blPwmDutyCycle,
+            .gpio_num   = cfg->pins.bl,
+            .speed_mode = LEDC_LOW_SPEED_MODE,
+            .hpoint     = 0,
+            .timer_sel  = LEDC_TIMER_0,
+        };
 
-    ledc_channel_config(&channelcfg);
-#endif /*  CONFIG_MIPI_DISPLAY_PWM_BL > 0 */
-
+        ledc_channel_config(&channelcfg);
+    }
     ESP_LOGI(TAG, "Display initialized.");
 
     //spi_device_acquire_bus(*spi, portMAX_DELAY);
 }
 
 void
-mipi_display_ioctl(spi_device_handle_t spi, const uint8_t command, uint8_t *data, size_t size)
+mipi_display_ioctl(spi_device_handle_t spi, const hagl_hal_custom_config_t* cfg, const uint8_t command, uint8_t *data, size_t size)
 {
     xSemaphoreTake(mutex, portMAX_DELAY);
 
@@ -325,19 +324,19 @@ mipi_display_ioctl(spi_device_handle_t spi, const uint8_t command, uint8_t *data
         case MIPI_DCS_GET_POWER_SAVE:
         case MIPI_DCS_READ_DDB_START:
         case MIPI_DCS_READ_DDB_CONTINUE:
-            mipi_display_write_command(spi, command);
-            mipi_display_read_data(spi, data, size);
+            mipi_display_write_command(spi, cfg, command);
+            mipi_display_read_data(spi, cfg, data, size);
             break;
         default:
-            mipi_display_write_command(spi, command);
-            mipi_display_write_data(spi, data, size);
+            mipi_display_write_command(spi, cfg, command);
+            mipi_display_write_data(spi, cfg, data, size);
     }
 
     xSemaphoreGive(mutex);
 }
 
 void
-mipi_display_close(spi_device_handle_t spi)
+mipi_display_close(spi_device_handle_t spi, const hagl_hal_custom_config_t* cfg)
 {
     //spi_device_release_bus(spi);
 }

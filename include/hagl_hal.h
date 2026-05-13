@@ -38,6 +38,7 @@ SPDX-License-Identifier: MIT
 extern "C" {
 #endif
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <hagl/backend.h>
 
@@ -81,17 +82,48 @@ typedef uint8_t hagl_color_t;
 #undef HAGL_HAS_HAL_BACK_BUFFER
 #endif
 
-#define DISPLAY_WIDTH       (CONFIG_MIPI_DISPLAY_WIDTH)
-#define DISPLAY_HEIGHT      (CONFIG_MIPI_DISPLAY_HEIGHT)
+//#define DISPLAY_WIDTH       (CONFIG_MIPI_DISPLAY_WIDTH)
+//#define DISPLAY_HEIGHT      (CONFIG_MIPI_DISPLAY_HEIGHT)
 #define DISPLAY_DEPTH       (CONFIG_MIPI_DISPLAY_DEPTH)
-#define MIPI_DISPLAY_WIDTH  (CONFIG_MIPI_DISPLAY_WIDTH)
-#define MIPI_DISPLAY_HEIGHT (CONFIG_MIPI_DISPLAY_HEIGHT)
+//#define MIPI_DISPLAY_WIDTH  (CONFIG_MIPI_DISPLAY_WIDTH)
+//#define MIPI_DISPLAY_HEIGHT (CONFIG_MIPI_DISPLAY_HEIGHT)
 #define MIPI_DISPLAY_DEPTH  (CONFIG_MIPI_DISPLAY_DEPTH)
+
+typedef struct
+{
+    uint16_t width;
+    uint16_t height;
+    uint16_t offsetX;
+    uint16_t offsetY;
+    uint32_t clockFreqHz;
+
+    bool invertColors;
+    uint32_t blActiveLevel; // Usually 1
+    int32_t blPwmDutyCycle; // -1 to disable
+
+    struct
+    {
+        int miso;
+        int mosi;
+        int sck;
+        int cs;
+        int dc;
+        int rst;
+        int bl;
+    } pins;
+} hagl_hal_custom_config_t;
+
+void hagl_hal_custom_config(const hagl_hal_custom_config_t* cfg);
 
 /**
  * Initialize the HAL
  */
 void hagl_hal_init(hagl_backend_t *backend);
+
+inline const hagl_hal_custom_config_t* hagl_hal_get_custom_config(hagl_backend_t* backend)
+{
+    return (hagl_hal_custom_config_t*) backend->buffer2;
+}
 
 #ifdef __cplusplus
 }
